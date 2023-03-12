@@ -1,5 +1,0 @@
-/devices/platform/f8000000.pcie/pci0000:00/0000:00:00.0/0000:01:00.0/ata1/host0/target0:0:0/0:0:0:0/block/sda
-/devices/platform/f8000000.pcie/pci0000:00/0000:00:00.0/0000:01:00.0/ata2/host1/target1:0:0/1:0:0:0/block/sdb
-/devices/platform/f8000000.pcie/pci0000:00/0000:00:00.0/0000:01:00.0/ata3/host2/target2:0:0/2:0:0:0/block/sdc
-/devices/platform/f8000000.pcie/pci0000:00/0000:00:00.0/0000:01:00.0/ata4/host3/target3:0:0/3:0:0:0/block/sdd
-/devices/platform/f8000000.pcie/pci0000:00/0000:00:00.0/0000:01:00.0/ata5/host4/target4:0:0/4:0:0:0/block/sde
