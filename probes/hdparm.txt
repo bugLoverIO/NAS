@@ -1,5 +1,0 @@
-active/idle
-standby
-standby
-standby
-standby
