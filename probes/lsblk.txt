@@ -1,6 +1,0 @@
-sda
-sdb
-sdc
-sdd
-sde
-mmcblk1
