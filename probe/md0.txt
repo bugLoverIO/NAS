@@ -1,0 +1,34 @@
+/dev/md0:
+           Version : 1.2
+     Creation Time : Sat Feb  4 11:53:35 2023
+        Raid Level : raid5
+        Array Size : 3906521088 (3725.55 GiB 4000.28 GB)
+     Used Dev Size : 976630272 (931.39 GiB 1000.07 GB)
+      Raid Devices : 5
+     Total Devices : 5
+       Persistence : Superblock is persistent
+
+     Intent Bitmap : Internal
+
+       Update Time : Tue Feb 21 00:01:42 2023
+             State : clean 
+    Active Devices : 5
+   Working Devices : 5
+    Failed Devices : 0
+     Spare Devices : 0
+
+            Layout : left-symmetric
+        Chunk Size : 512K
+
+Consistency Policy : bitmap
+
+              Name : rockpi-4b:0  (local to host rockpi-4b)
+              UUID : bff0a0ba:a76ead26:51510681:8f3d27a5
+            Events : 16342
+
+    Number   Major   Minor   RaidDevice State
+       6       8       64        0      active sync   /dev/sde
+       1       8        0        1      active sync   /dev/sda
+       2       8       32        2      active sync   /dev/sdc
+       3       8       48        3      active sync   /dev/sdd
+       5       8       16        4      active sync   /dev/sdb

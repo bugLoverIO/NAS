@@ -47,7 +47,6 @@ def _readSytem(cmd, file, isProcess):
 
     return output
 
-
 def checkPrivilege():
     """
     Determine if the user can properly execute the script.  Must have sudo or be root
@@ -176,8 +175,9 @@ def getDevicesMapping(devices): #return a disc by device with its ATA mapping
 
     for line in lines:
         line = line[0].split("/")
-        mapping[line[12]] = (line[7][:-1], int(line[7][-1:]))
-    
+        #mapping[line[12]] = (line[7][:-1], int(line[7][-1:]))
+        mapping[line[12]] = line[7]
+
     return mapping
 
 #   Activity {'md0': {'read': 26914, 'write': 224}, 'mmcblk1p1': {'read': 956173, 'write': 7278577}}
@@ -244,28 +244,47 @@ def getRAID():           # List RAID and details (do no spin up drive )
     
     # process first line
     devName  = lines[0][0]
-    raidType = lines[0][3]
-    active   = lines[0][2]
-        
-    hddctr = 4
+    state    = lines[0][2]
+    if (state == "active"):
+        if lines[0][3].find("raid")>=0:
+            raidType = lines[0][3]
+            hddctr = 4
+        else:
+            raidType = lines[0][4]
+            hddctr = 5
+    else:    
+        raidType = "Error"
+        hddctr = 3
+    
     while hddctr < len(lines[0]):
         tmpDevice = lines[0][hddctr]
         tmpidx = tmpDevice.find("[")
         if tmpidx >= 0:
-            tmpId = int(tmpDevice[tmpidx+1:-1])
+            '''  INDEX is useless skip it
+            tmpidx2 = tmpDevice.find("]")
+            tmpId = int(tmpDevice[tmpidx+1:tmpidx2])
+            '''
             tmpDevice = tmpDevice[0:tmpidx]
+        
         hddList.append(tmpDevice)
         hddctr = hddctr + 1
 
-    # process second line
-    nbDiscTotal = int(lines[1][10][1:-1].split("/")[0])
-    nbDiscInUsed = int(lines[1][10][1:-1].split("/")[1])
-    disc = lines[1][11][1:-1]
+    
+    if len(lines[1]) > 5:    
+        # process second line
+        nbDiscTotal = int(lines[1][10][1:-1].split("/")[0])
+        nbDiscInUsed = int(lines[1][10][1:-1].split("/")[1])
+        disc = lines[1][11][1:-1]
+    else:
+        nbDiscTotal = len(hddList)
+        nbDiscInUsed = 0
+        disc = ""
+
 
     # process third line
     recovery = None
+    status = 'unknown'
     if len(lines[2]) > 1:
-        status = None
         if lines[2][0] == "bitmap:": 
             if nbDiscTotal == nbDiscInUsed:
                 status = 'clean'
@@ -273,9 +292,10 @@ def getRAID():           # List RAID and details (do no spin up drive )
                 status = 'degraded'
             else:
                 status = 'error'
+            
 
-        if lines[2][1] == "recovery": 
-            status = 'recovering'
+        if lines[2][1] == "recovery" or lines[2][1] == "resync": 
+            status = lines[2][1]
             percentage = float(lines[2][3][:-1])
             duration = float(lines[2][5].split("=")[1][:-3])
             speed =  int(lines[2][6].split("=")[1][:-5])
@@ -283,7 +303,7 @@ def getRAID():           # List RAID and details (do no spin up drive )
         
 
     output[devName] = { 'type'      : raidType, 
-                        'active'    : active, 
+                        'state'     : state, 
                         'devices'   : hddList, 
                         'disc'      : (nbDiscTotal,nbDiscInUsed,disc), 
                         'status'    : status,
@@ -485,7 +505,8 @@ if __name__ == "__main__":
         print(f"  Sizes   {sizes}")
         print(f"  Smarts Attributes")
         print(f"    Name  {names}")
-        print(f"    Attrs {smartAttrs}")
+        for dev in smartAttrs:
+            print(f"    {dev} - {smartAttrs[dev]}")
         print(f"    Sumup {sumup}")
         print(f"  Mapping  {mapping}")
         print(f"  Standby  {standby}")

@@ -34,13 +34,16 @@ from threading import Thread
 from queue import Queue
 
 #sys.path.append("/etc/argon/")
-#from argonsysinfo import *
 from sysInfo import *
-from argonlogging import *
-from argonconfig import *
-from version import *
+from NASlog import *
+from NASconfig import *
+from NASversion import *
 
 isRoot, isArmbian = checkPrivilege()
+print(f"\nisRoot {isRoot}  isArmban {isArmbian}\n")
+if (not isRoot):
+    print("NAS must be executed with Root privilege")
+    exit(-1)
 
 if isArmbian: 
     import mraa
@@ -52,20 +55,30 @@ if isArmbian:
 # else:
 #    bus=smbus.SMBus(0)
 OLED_ENABLED = False
-MAX_WARNING  = 10
+MAX_WARNING  = 50
+
+OFF   = 0
+BLINK = 1
+ON    = 2
+
 
 #
 # Enable logging
 #
 
-if os.path.exists("NASoled.py"):
+if isArmbian: 
     import datetime
-    from NASoled import *
+    from NAS_SH1306 import *
+    OLED_ENABLED=True
+else:
+    import datetime
+    from NAS_trace import *
     OLED_ENABLED=True
 
 
 devices, sizes   = getDevices()
 names, smartAttrs, sumup = getDevicesSmartsAttr(devices['hd'])
+mapping = getDevicesMapping(devices['hd'])
 
 #
 # Enable debug logging if requested
@@ -82,11 +95,8 @@ if isArmbian:
     fanPwm.enable(True)
 
 def ledDriver(q):
-    OFF   = 0
-    BLINK = 1
-    ON    = 2
-
-    led = {'sda':29, 'sdb':31, 'sdc':33, 'sdd':35, 'sde':37, 'blue':16, 'red':18}
+   
+    led = {'ata1':29, 'ata2':31, 'ata3':33, 'ata5':35, 'ata4':37, 'blue':16, 'red':18}
     
     for i in led:
         if isArmbian:
@@ -161,20 +171,6 @@ def watch_key(q):
     while True:
         q.put(read_key(pattern, 10))
 
-def get_fanspeed(tempval, configlist):
-    """
-    This function converts the corresponding fanspeed for the given temperature the
-    configutation data is a list of strings in the form "<temperature>:<speed>"
-    """
-    retval = 0
-    if len(configlist) > 0:
-        for k in configlist.keys():
-            if tempval >= float(k):
-                retval=int(configlist[k])
-                logDebug( "Temperature (" + str(tempval) + ") >= " + str(k) + " suggesting fanspeed of " + str(retval) )
-    logDebug( "Returning fanspeed of " + str(retval))
-    return retval
-
 
 # This function is the thread that monitors temperature and sets the fan speed
 # The value is fed to get_fanspeed to get the new fan speed
@@ -195,45 +191,58 @@ def setFanSpeed (overrideSpeed : int = None, instantaneous : bool = True):
     an instantaneous change.  Some hardware does not like the sudden change, it wants the
     speed set to 100% THEN changed to the new value.  Not really sure why this is.
     """
-    '''
-    prevspeed    = argonsysinfo_getCurrentFanSpeed()
-    if not prevspeed:
-        prevspeed = 0
-        argonsysinfo_recordCurrentFanSpeed( prevspeed )
-    
+
+    def getFanSpeed(tempval, configlist):
+        """
+        This function converts the corresponding fanspeed for the given temperature the
+        configutation data is a list of strings in the form "<temperature>:<speed>"
+        """
+        retval = 0
+        if len(configlist) > 0:
+            for k in configlist.keys():
+                if tempval >= float(k):
+                    retval=int(configlist[k])
+                    logDebug( "Temperature (" + str(tempval) + ") >= " + str(k) + " suggesting fanspeed of " + str(retval) )
+        logDebug( "Returning fanspeed of " + str(retval))
+        return retval
+
+
     if overrideSpeed is not None:
-        newspeed = overrideSpeed
+        newSpeed = overrideSpeed
     else:
-        newspeed = max([get_fanspeed(argonsysinfo_getcputemp(), loadCPUFanConfig())
-                       ,get_fanspeed(argonsysinfo_getmaxhddtemp(), loadHDDFanConfig())
+        newSpeed = max([getFanSpeed(getCPUusage()['temp'], loadCPUFanConfig())
+                       ,getFanSpeed(sumup['maxTemp'], loadHDDFanConfig())
                        ]
                       )
-        if newspeed < prevspeed and not instantaneous:
+        if newSpeed < setFanSpeed.prevSpeed and not instantaneous:
             # Pause 30s before speed reduction to prevent fluctuations
             time.sleep(30)
 
     # Make sure the value is in 0-100 range
-    newspeed = max([min([100,newspeed]),0])
-    if overrideSpeed is not None or (prevspeed != newspeed):
+    newSpeed = max([min([100,newSpeed]),0])
+    if overrideSpeed is not None or (setFanSpeed.prevSpeed != newSpeed):
         try:
-            if newspeed > 0:
-                # Spin up to prevent issues on older units
-                print("-- bus.write_byte(ADDR_FAN,100 - 0.5)")
-                fanPwm.write(0.5)
-                time.sleep(1)
-            print(f"-- bus.write_byte(ADDR_FAN,int({newspeed} -  {1-newspeed/100.0}))")
+            if setFanSpeed.prevSpeed == 0:
+                # Spin up to prevent issues on older units                
+                print(f"FAN starts")
+                if isArmbian: 
+                    fanPwm.write(0.5)
+                time.sleep(2)
+                
+
+            print(f"FAN speed {newSpeed} -  {1-newSpeed/100.0}))")
 
             if isArmbian:
-                fanPwm.write(1-newspeed/100.0)
+                fanPwm.write(1-newSpeed/100.0)
 
+            logging.debug( "writing to fan port, speed " + str(newSpeed))
+            setFanSpeed.prevSpeed = newSpeed
 
-            logging.debug( "writing to fan port, speed " + str(newspeed))
-            argonsysinfo_recordCurrentFanSpeed( newspeed )
         except IOError:
             logError( "Error trying o update fan speed.")
-            return prevspeed
-    return newspeed
-    '''
+            return setFanSpeed.prevspeed
+    return newSpeed
+setFanSpeed.prevSpeed = 0
 
 def temp_check():
     """
@@ -252,8 +261,14 @@ def display_loop(readq, writeq):
     monthlist = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"]
     oledscreenwidth = oled_getmaxX()
 
+
+    global devices, sizes
+    global names, smartAttrs, sumup
+    global mapping
+
     fontwdSml = 6    # Maps to 6x8
     fontwdReg = 8    # Maps to 8x16
+    fontwdLrg = 10    # Maps to 8x16
     stdleftoffset = 54
 
     temperature="C"
@@ -274,7 +289,6 @@ def display_loop(readq, writeq):
     curlist = []
     cpuGraph = []
 
-    import random
     for i in range (30):
         cpuGraph.append(0)
 
@@ -320,9 +334,13 @@ def display_loop(readq, writeq):
         else:
             screenjogflag = 1
 
+        if (int(time.strftime("%M")) == 0):
+            devices, sizes   = getDevices()
+            names, smartAttrs, sumup = getDevicesSmartsAttr(devices['hd'])
+            mapping = getDevicesMapping(devices['hd'])            
 
         needsUpdate = False
-        if curscreen == "cpu":  # DONE
+        if   curscreen == "cpu": 
             # CPU Usage
             
             try:                
@@ -347,7 +365,7 @@ def display_loop(readq, writeq):
             
             needsUpdate = True
             curlist = []           
-        elif curscreen == "storage": #DONE
+        elif curscreen == "storage": 
             # Storage Info           
             deviceUsage = getDeviceUsage(devices['mnt'])
             
@@ -356,8 +374,8 @@ def display_loop(readq, writeq):
             yoffset = 16
             for curDev in deviceUsage:
                 # Right column first, safer to overwrite white space
-                oled_writetextaligned(deviceUsage[curDev]['total'], 77, yoffset, oledscreenwidth-77, 2, fontwdSml)
-                oled_writetextaligned(str(deviceUsage[curDev]['percent'])+"%", 50, yoffset, 74-50, 2, fontwdSml)
+                oled_writetextaligned(deviceUsage[curDev]['total'], 85, yoffset, oledscreenwidth-85, 2, fontwdSml)
+                oled_writetextaligned(str(deviceUsage[curDev]['percent'])+"%", 60, yoffset, 90-60, 2, fontwdSml)
                 tmpname = curDev
                 if len(tmpname) > 8:
                     tmpname = tmpname[0:8]
@@ -367,7 +385,7 @@ def display_loop(readq, writeq):
         
             needsUpdate = True
             curlist = []          
-        elif curscreen == "bandwidth": #DONE
+        elif curscreen == "bandwidth": 
             # Bandwidth info            
             deviceActivity = getDeviceActivty(devices['mnt'])
             stoptime  = time.clock_gettime_ns(time.CLOCK_MONOTONIC)
@@ -376,8 +394,8 @@ def display_loop(readq, writeq):
 
             oled_clearbuffer()
             oled_writetextaligned( "BANDWIDTH", 0, 0, oledscreenwidth, 1, fontwdSml)
-            oled_writetextaligned( "Write", 77, 16, oledscreenwidth-77, 2, fontwdSml)
-            oled_writetextaligned( "Read",  50, 16, 74-50,              2, fontwdSml)
+            oled_writetextaligned( "Write", 90, 16, oledscreenwidth-90, 2, fontwdSml)
+            oled_writetextaligned( "Read",  60, 16, 90-60,              2, fontwdSml)
             oled_writetext( "Device", 0, 16, fontwdSml )
 
             itemcount = 2
@@ -393,10 +411,10 @@ def display_loop(readq, writeq):
                 '''
 
                 bandwidth = int(((curr['write']-prev['write']))/(timespan*2))
-                oled_writetextaligned( kbstr(bandwidth,False), 77, yoffset, oledscreenwidth-77, 2, fontwdSml )
+                oled_writetextaligned( kbstr(bandwidth,False), 90, yoffset, oledscreenwidth-90, 2, fontwdSml )
 
                 bandwidth = int(((curr['read']-prev['read']))/(timespan*2))
-                oled_writetextaligned( kbstr(bandwidth,False), 50, yoffset, 74-50, 2, fontwdSml )
+                oled_writetextaligned( kbstr(bandwidth,False), 60, yoffset, 90-60, 2, fontwdSml )
 
                 oled_writetext( device, 0, yoffset, fontwdSml )
                 itemcount = itemcount - 1
@@ -405,7 +423,7 @@ def display_loop(readq, writeq):
             deviceActivityPrev  = deviceActivity         
             needsUpdate = True
             curlist = []
-        elif curscreen == "raid": #DONE 
+        elif curscreen == "raid":  
             # Raid Info
             
             raid = getRAID()
@@ -415,7 +433,10 @@ def display_loop(readq, writeq):
             oled_loadbg("bgraid")
             oled_writetextaligned(raidName, 0, 0, stdleftoffset, 1, fontwdSml)
             oled_writetextaligned(raid["type"], 0, 8, stdleftoffset, 1, fontwdSml)
-            oled_writetextaligned(sizes[raidName], 0, 56, stdleftoffset, 1, fontwdSml)
+            if raidName in sizes:
+                oled_writetextaligned(sizes[raidName], 0, 56, stdleftoffset, 1, fontwdSml)
+            else:
+                oled_writetextaligned("----", 0, 56, stdleftoffset, 1, fontwdSml)
             oled_writetext( raid['status'], stdleftoffset, 4, fontwdReg )
             if raid['recovery'] != None:
                 oled_writetext(f"{raid['recovery']['percentage']}% at {raid['recovery']['speed']}", stdleftoffset, 16, fontwdSml)
@@ -424,11 +445,11 @@ def display_loop(readq, writeq):
             oled_writetext(f"Failed  : {raid['disc'][0]-raid['disc'][1]}", stdleftoffset, 48, fontwdSml)
             # oled_writetext("Failed  : "+str(int(tmpitem["info"]["failed"]))+"/"+str(int(tmpitem["info"]["devices"])), stdleftoffset, 48, fontwdSml)
             needsUpdate = True            
-        elif curscreen == "smart": #DONE
+        elif curscreen == "smart": 
             # Raid Info         
             oled_loadbg("bgraid")
-            
-    
+            led = {}
+               
             if    sumup['error']   >  0: 
                 msg = "ERROR"
             elif  sumup['warning'] >  MAX_WARNING: 
@@ -456,9 +477,12 @@ def display_loop(readq, writeq):
                 seekErr = 0
                 
                 for drive in smartAttrs:
+                    led[mapping[drive]] = OFF
+
                     if smartAttrs[drive]['warning'] > MAX_WARNING: 
-                        nb += 1                
-                        # disc[drive['drive']] = 1        # notify LED driver
+                        nb += 1    
+                        led[mapping[drive]] = BLINK
+             
                     if smartAttrs[drive]['warning'] > maxWarn: maxWarn = smartAttrs[drive]['warning'] 
                     readErr  += smartAttrs[drive]['1']
                     seekErr  += smartAttrs[drive]['7']
@@ -475,22 +499,41 @@ def display_loop(readq, writeq):
                 nb = 0
                 errStr = []
                 for drive in smartAttrs:
+                    led[mapping[drive]] = OFF
                     if smartAttrs[drive]['error'] > 0: 
                         nb += 1
-                        # disc[drive['drive']] = 2         # notify LED driver
-
+                        led[mapping[drive]] = ON
+                        
                     errStr.append(str(smartAttrs[drive]['error']))
-
                 
                 oled_writetextaligned(f"{nb} disc", stdleftoffset, 36, oledscreenwidth-stdleftoffset, 1, fontwdSml)
                 oled_writetextaligned("/".join(errStr), stdleftoffset, 48, oledscreenwidth-stdleftoffset, 1, fontwdSml)
 
             
-            # writeq.put((msg,disc))
+            writeq.put((msg,led))
             needsUpdate = True
             screenjogflag = 1
             curlist=[]
-        elif curscreen == "ram":   # DONE
+        elif curscreen == "fan":   
+            # RAM 
+            try:
+                oled_loadbg("bgfan")
+                speed = setFanSpeed.prevSpeed
+                if speed == 0:
+                    oled_writetextaligned(f"OFF", stdleftoffset, 24, oledscreenwidth-stdleftoffset, 1, fontwdReg)    
+                elif speed == 100:
+                    oled_writetextaligned(f"MAX", stdleftoffset, 24, oledscreenwidth-stdleftoffset, 1, fontwdReg)    
+                else:
+                    oled_writetextaligned(f"Speed", stdleftoffset, 12, oledscreenwidth-stdleftoffset, 1, fontwdReg)
+                    oled_writetextaligned(f"{speed}%", stdleftoffset, 32, oledscreenwidth-stdleftoffset, 1, fontwdReg)
+                
+                needsUpdate = True
+            except:
+                logError( "Error processing information for fan display")
+                needsUpdate = False
+                # Next page due to error/no data
+                screenjogflag = 1
+        elif curscreen == "ram":   
             # RAM 
             try:
                 oled_loadbg("bgram")
@@ -504,7 +547,7 @@ def display_loop(readq, writeq):
                 needsUpdate = False
                 # Next page due to error/no data
                 screenjogflag = 1
-        elif curscreen == "temp":  # DONE
+        elif curscreen == "temp": 
             # Temp
         
             oled_loadbg("bgtemp")
@@ -557,7 +600,7 @@ def display_loop(readq, writeq):
 
             needsUpdate = True
             curlist = []
-        elif curscreen == "ip":    # DONE
+        elif curscreen == "ip":  
             # IP Address
             try:
                 if len(curlist) == 0:
@@ -578,9 +621,15 @@ def display_loop(readq, writeq):
                 screenjogflag = 1
         elif curscreen == "disc":
             needsUpdate = True    
-        elif curscreen == "reboot":            
+        elif curscreen == "reboot":  
+
             oled_writetext('Click : Reboot', 20, 20, fontwdSml)
             oled_writetext('Twise : Shutdown', 20, 32, fontwdSml)
+
+            devices, sizes   = getDevices()
+            names, smartAttrs, sumup = getDevicesSmartsAttr(devices['hd'])
+            mapping = getDevicesMapping(devices['hd'])       
+
             curscreen = "reboot-"
             needsUpdate = True
         elif curscreen == 'clock': # display time            
@@ -681,18 +730,20 @@ def display_defaultimg():
     
 
 
+setFanSpeed.prev = 0
 if len(sys.argv) > 1:
     cmd = sys.argv[1].upper()
     if cmd == "SHUTDOWN":
         # Signal poweroff
-        logInfo( "SHUTDOWN requested via shutdown of command of argononed service")
+        logInfo( "SHUTDOWN requested via shutdown of command of NAS service")
         setFanOff()
-        print("-- bus.write_byte(ADDR_FAN,0xFF)")
+        if OLED_ENABLED == True:
+            display_defaultimg()
         
     elif cmd == "FANOFF":
         # Turn off fan
         setFanOff()
-        logInfo( "FANOFF requested via fanoff command of the argononed service")
+        logInfo( "FANOFF requested via fanoff command of the NAS service")
         if OLED_ENABLED == True:
             display_defaultimg()
 
@@ -705,7 +756,7 @@ if len(sys.argv) > 1:
 
         # Starts the power button and temperature monitor threads
         try:
-            logInfo( "argononed service version " + ARGON_VERSION + " starting.")
+            logInfo( f"NAS service version {NAS_VERSION} starting.")
 
             keyQ = Queue()
             ledQ = Queue()
@@ -722,12 +773,12 @@ if len(sys.argv) > 1:
                 t3.start()
                 t4.start()
 
-            ipcq.join()
-        except:
-            print("GPIO.cleanup()")
+            #ledQ.join()
+        except Exception as e:
+            print(f"GPIO.cleanup() {e}")
 
     elif cmd == "VERSION":
-        print( "Version: " + ARGON_VERSION )
+        print( f"Version: {NAS_VERSION}" )
         display_defaultimg()
         time.sleep(3)
 

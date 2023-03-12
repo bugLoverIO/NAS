@@ -1,0 +1,11 @@
+NAME         MAJ:MIN RM          SIZE RO TYPE  MOUNTPOINT
+sda            8:0    0 1000204886016  0 disk  
+sdb            8:16   0 1000204886016  0 disk  
+sdc            8:32   0 1000204886016  0 disk  
+sdd            8:48   0 1000204886016  0 disk  
+sde            8:64   0 1000204886016  0 disk  
+md0            9:0    0 4000277594112  0 raid5 /srv/dev-disk-by-uuid-6d60a802-c1c0-4edf-838a-d0906095f3fe
+mmcblk1      179:0    0   61865984000  0 disk  
+mmcblk1p1    179:1    0   61220061696  0 part  /
+mmcblk1boot0 179:32   0       4194304  1 disk  
+mmcblk1boot1 179:64   0       4194304  1 disk  
