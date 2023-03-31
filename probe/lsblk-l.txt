@@ -1,9 +1,14 @@
 NAME         MAJ:MIN RM          SIZE RO TYPE  MOUNTPOINT
+loop0          7:0    0      44122112  1 loop  /snap/certbot/2835
+loop1          7:1    0     107900928  1 loop  /snap/core/14789
+loop2          7:2    0      61960192  1 loop  /snap/core20/1832
 sda            8:0    0 1000204886016  0 disk  
 sdb            8:16   0 1000204886016  0 disk  
 sdc            8:32   0 1000204886016  0 disk  
-sdd            8:48   0 1000204886016  0 disk  
+sdd            8:48   0 1500267937792  0 disk  
+sdd1           8:49   0 1500267896832  0 part  /srv/dev-disk-by-uuid-a3fa7921-6c1b-4893-99c8-a18b3f209740
 sde            8:64   0 1000204886016  0 disk  
+sdf            8:80   0 1000204886016  0 disk  
 md0            9:0    0 4000277594112  0 raid5 /srv/dev-disk-by-uuid-6d60a802-c1c0-4edf-838a-d0906095f3fe
 mmcblk1      179:0    0   61865984000  0 disk  
 mmcblk1p1    179:1    0   61220061696  0 part  /

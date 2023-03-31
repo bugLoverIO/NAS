@@ -41,7 +41,7 @@ from NASversion import *
 
 isRoot, isArmbian = checkPrivilege()
 print(f"\nisRoot {isRoot}  isArmban {isArmbian}\n")
-if (not isRoot):
+if ((not isRoot) and isArmbian):
     print("NAS must be executed with Root privilege")
     exit(-1)
 
@@ -447,7 +447,7 @@ def display_loop(readq, writeq):
             needsUpdate = True            
         elif curscreen == "smart": 
             # Raid Info         
-            oled_loadbg("bgraid")
+            oled_loadbg("bgdisc")
             led = {}
                
             if    sumup['error']   >  0: 
@@ -457,11 +457,22 @@ def display_loop(readq, writeq):
             else: 
                 msg = "- OK -"  
         
+
+            yoffset = 0
+            for dev in smartAttrs:
+                oled_writetext(dev, 56, yoffset, fontwdSml)
+                oled_writetextaligned(f"{smartAttrs[dev]['warning']}",75,yoffset,20, 2, fontwdSml)    
+                oled_writetextaligned(f"{smartAttrs[dev]['error']}",90,yoffset,30, 2, fontwdSml)    
+                yoffset += 12
+
+            '''
             oled_writetextaligned(msg, stdleftoffset, 8, oledscreenwidth-stdleftoffset, 1, fontwdReg)
 
-            
+                
             
             if msg == "- OK -":
+               
+                
                 devStb = getDevicesStandby(devices['hd'])
                 idle = 0
                 for stb in devStb:
@@ -469,6 +480,7 @@ def display_loop(readq, writeq):
 
                 oled_writetextaligned(f"Idle   {idle}", stdleftoffset, 36, oledscreenwidth-stdleftoffset, 1, fontwdSml)
                 oled_writetextaligned(f"Active {len(devStb)-idle}", stdleftoffset, 48, oledscreenwidth-stdleftoffset, 1, fontwdSml)
+                
 
             if msg == "WARNING":
                 nb = 0
@@ -509,7 +521,7 @@ def display_loop(readq, writeq):
                 oled_writetextaligned(f"{nb} disc", stdleftoffset, 36, oledscreenwidth-stdleftoffset, 1, fontwdSml)
                 oled_writetextaligned("/".join(errStr), stdleftoffset, 48, oledscreenwidth-stdleftoffset, 1, fontwdSml)
 
-            
+            '''            
             writeq.put((msg,led))
             needsUpdate = True
             screenjogflag = 1
@@ -777,10 +789,10 @@ if len(sys.argv) > 1:
         except Exception as e:
             print(f"GPIO.cleanup() {e}")
 
-    elif cmd == "VERSION":
-        print( f"Version: {NAS_VERSION}" )
-        display_defaultimg()
-        time.sleep(3)
+else:
+    print( f"Version: {NAS_VERSION}" )
+    display_defaultimg()
+    time.sleep(3)
 
 
 

@@ -8,6 +8,10 @@ from pathlib import Path
 
 isArmbian = False
 
+
+# docker ps --format '{{ .ID }}\t{{ .Names }}\t{{ .Size}}\t {{ .Status}}'
+# see https://devdojo.com/bobbyiliev/how-to-change-the-docker-ps-output-format
+
 def _readSytem(cmd, file, isProcess):
     def stringProcess(inString):
         out = inString.replace('\t', ' ')
@@ -90,7 +94,7 @@ def getDevices():
                         True)
 
     for line in lines[1:]:
-        if (len(line) == 7):
+        if (len(line) == 7) and (line[5] != "loop"):
             mnt.append(line[0]) 
             size[line[0]]=kbstr(int(line[3]))
         else:
@@ -175,20 +179,25 @@ def getDevicesMapping(devices): #return a disc by device with its ATA mapping
 
     for line in lines:
         line = line[0].split("/")
-        #mapping[line[12]] = (line[7][:-1], int(line[7][-1:]))
-        mapping[line[12]] = line[7]
+        if line[3].find("pcie") >= 0:
+            mapping[line[12]] = line[7]
 
     return mapping
 
 #   Activity {'md0': {'read': 26914, 'write': 224}, 'mmcblk1p1': {'read': 956173, 'write': 7278577}}
-def getDeviceActivty(devices ):
+def getDeviceActivty(devices):
 
     output = {}
     
     for device in devices:
+
         file = f"/sys/block/{device}/stat"
         if not os.path.exists(file):
-            file = f"/sys/block/{device[:-2]}/stat"
+            file = f"/sys/block/{device[:-1]}/stat"
+            if not os.path.exists(file):
+                file = f"/sys/block/{device[:-2]}/stat"
+                if not os.path.exists(file):
+                    continue
 
         lines  = _readSytem(f"cat {file}", 
                             f"probe/{device}.stat.txt", 
@@ -488,10 +497,25 @@ if __name__ == "__main__":
     print (f"CHECK isRoot:{isRoot}, isArmbian {isArmbian}")
     
     if (isRoot or not isArmbian):
+        print("DEVICES")
         devices,sizes = getDevices()
+        print(f"  Devices {devices}")
+        print(f"  Sizes   {sizes}")
+
         names, smartAttrs, sumup = getDevicesSmartsAttr(devices['hd'])
+        print(f"  Smarts Attributes")
+        print(f"    Name  {names}")
+        for dev in smartAttrs:
+            print(f"    {dev} - {smartAttrs[dev]}")
+
+        print(f"    Sumup {sumup}")
+
         mapping       = getDevicesMapping(devices['hd'])
+        print(f"  Mapping  {mapping}")
+
         standby       = getDevicesStandby(devices['hd'])
+        print(f"  Standby  {standby}")
+
         raid          = getRAID()
         activity      = getDeviceActivty(devices['mnt'])
         usage         = getDeviceUsage(devices['mnt'])
@@ -500,16 +524,6 @@ if __name__ == "__main__":
         cpuUsage      = getCPUusage()
         ramUsage      = getRAMusage()
 
-        print("DEVICES")
-        print(f"  Devices {devices}")
-        print(f"  Sizes   {sizes}")
-        print(f"  Smarts Attributes")
-        print(f"    Name  {names}")
-        for dev in smartAttrs:
-            print(f"    {dev} - {smartAttrs[dev]}")
-        print(f"    Sumup {sumup}")
-        print(f"  Mapping  {mapping}")
-        print(f"  Standby  {standby}")
         print(f"  Activity {activity}")
         print(f"  Usage    {usage}")
         print("\nRAID")
